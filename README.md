@@ -1,37 +1,42 @@
-# BrewBlox Service for the Tilt Hydrometer
+# Brewblox Service for the Tilt Hydrometer
 
 The [Tilt hydrometer](https://tilthydrometer.com/) is a wireless hydrometer and thermometer used to gather live readings of specific gravity and temperature when brewing beer.
 
-[BrewBlox](https://brewpi.com/) is a modular brewery control system design to work with the BrewPi controller.
+[Brewblox](https://brewblox.netlify.app) is a modular brewery control system design to work with the BrewPi Spark controller.
 
-This brewBlox service integrates the Tilt hydrometer into BrewBlox.
+This service integrates the Tilt hydrometer into the Brewblox stack.
+You only need a single service: it will track all Tilts in range.
+
+## Credits
+
+This service is a continuation of [James Sandford](https://github.com/j616)'s [Tilt service](https://github.com/j616/brewblox-tilt).
 
 ## Usage
 
 ### Install script
 
-To automatically install a new Tilt, you can use the `install_tilt.py` script.
+You can use the `brewblox-ctl` tool to add a new Tilt service to your system.
 This will create the ./tilt directory, and edit your `docker-compose.yml` file.
 
-In your BrewBlox directory, run the following commands:
-
-```bash
-curl -O https://raw.githubusercontent.com/j616/brewblox-tilt/develop/install_tilt.py
-python3 ./install_tilt.py
+```
+brewblox-ctl add-tilt
 ```
 
-### Or: Deploy the Tilt service on the BrewBlox stack
+### Or: Manually add the Tilt service to the Brewblox stack
 
-You need to add the service and set the eventbus port in your `docker-compose.yml` file.
+You need to create the `~/brewblox/tilt` directory, and add the service to the `docker-compose.yml` file.
+
+```bash
+mkdir ~/brewblox/tilt
+```
 
 ```yaml
   tilt:
-    image: j616s/brewblox-tilt:latest
+    image: brewblox/brewblox-tilt:${BREWBLOX_RELEASE}
     restart: unless-stopped
     privileged: true
     network_mode: host
-    volumes:
-        - ./tilt:/share
+    volumes: ['./tilt:/share']
 ```
 
 Finally, you'll have to bring up the new service using
@@ -41,18 +46,21 @@ brewblox-ctl up
 ```
 
 ### Running on a remote machine
+
 On the remote machine in the directory you wish to install the service, create a `docker-compose.yml` file like this with the relevant IP address for the brewblox host.
+
 ```yaml
 version: '3.7'
 services:
   tilt:
-    command: --mqtt-host=<brewblox_hostname/IP>
-    image: j616s/brewblox-tilt:latest
-    network_mode: host
-    privileged: true
+    image: brewblox/brewblox-tilt:${BREWBLOX_RELEASE:-edge}
     restart: unless-stopped
+    privileged: true
+    network_mode: host
     volumes: ['./tilt:/share']
+    command: --mqtt-host=<brewblox_hostname/IP>
 ```
+
 If you host brewblox on a different port (e.g. if you run brewblox on a NAS), you'll also want to add `--mqtt-port=<port>` to the command with the relevant port (https).
 
 Create the directory for the tilt calibration
@@ -67,19 +75,19 @@ docker-compose up -d
 
 ### Add to your graphs
 
-Once the Tilt service receives data from your Tilt(s), it should be available as graph metrics in BrewBlox.
+Once the Tilt service receives data from your Tilt(s), it should be available as graph metrics in Brewblox.
 
 ### Calibration
 
 Calibration is optional. While the Tilt provides a good indication of fermentation progress without calibration, it's values can be less accurate than a traditional hydrometer. With calibration its accuracy is approximately that of a traditional hydrometer. If you wish to use your Tilt for anything beyond simple tracking of fermentation progress (e.g. stepping temperatures at a given SG value) it is recommended you calibrate your Tilt.
 
-To calibrate your Tilt, you first need to create a folder for the calibration files to be stored in. The recommended folder is `./tilt` in the BrewBlox directory. You can use other directories but you should change the volume parameter for the Tilt service in your docker compose file accordingly. You can create the `tilt` directory by running the following command in the BrewBlox directory:-
+To calibrate your Tilt, you first need to create a folder for the calibration files to be stored in. The recommended folder is `./tilt` in the Brewblox directory. You can use other directories but you should change the volume parameter for the Tilt service in your docker compose file accordingly. You can create the `tilt` directory by running the following command in the Brewblox directory:-
 
 ```bash
 mkdir tilt
 ```
 
-**NOTE:** It is recommended you create the `tilt` folder before launching the Tilt service for the first time. Failure to do so will result in the docker service creating the folder as root. If this happens, use `chown` to change the user and group ownership of the `tilt` folder to match the rest of the BrewBlox directory.
+**NOTE:** It is recommended you create the `tilt` folder before launching the Tilt service for the first time. Failure to do so will result in the docker service creating the folder as root. If this happens, use `chown` to change the user and group ownership of the `tilt` folder to match the rest of the Brewblox directory.
 
 If you wish to calibrate your Specific Gravity readings, create a file called `SGCal.csv` in the `tilt` directory with lines of the form:-
 
@@ -114,65 +122,57 @@ black,68,70
 black,75,76
 ```
 
-Calibrated values will be logged in BrewBlox separately to uncalibrated values. If you don't provide calibration values for a given colour of Tilt, only uncalibrated values will be logged. You don't need to calibrate both temperature and SG. If you only want to provide calibration values for SG, that works fine. Calibrated temp values would not be generated in this case but calibrate SG values would.
+Calibrated values will be logged in Brewblox separately to uncalibrated values. If you don't provide calibration values for a given colour of Tilt, only uncalibrated values will be logged. You don't need to calibrate both temperature and SG. If you only want to provide calibration values for SG, that works fine. Calibrated temp values would not be generated in this case but calibrate SG values would.
 
 It is also recommended that you re-calibrate SG whenever you change your battery. Different batteries and different placements of the sled inside the Tilt can affect the calibration.
 
 ## Limitations
 
-As the Tilt does not talk directly to the BrewPi controller, you cannot use your Tilt to control the temperature of your system. This service currently only allows you to log values from the Tilt. To control your BrewPi/BrewBlox setup you will need a BrewPi temperature sensor.
+As the Tilt does not talk directly to the BrewPi controller, you cannot use your Tilt to control the temperature of your system. This service currently only allows you to log values from the Tilt. To control your BrewPi/Brewblox setup you will need a BrewPi temperature sensor.
 
 ## Development
 
 To get started:
 
-Install deps & pyenv
-```bash
-sudo apt update -y
-sudo apt install -y \
-    libglib2.0-dev \
-    libatlas3-base \
-    python3-bluez \
-    make \
-    build-essential \
-    libssl-dev \
-    zlib1g-dev \
-    libbz2-dev \
-    libreadline-dev \
-    libsqlite3-dev \
-    wget \
-    curl \
-    llvm \
-    libncurses5-dev \
-    libncursesw5-dev \
-    xz-utils \
-    tk-dev \
-    libffi-dev \
-    liblzma-dev \
-    python-openssl \
-    git
+Install [Pyenv](https://github.com/pyenv/pyenv):
+```
+sudo apt-get update -y && sudo apt-get install -y make build-essential libssl-dev zlib1g-dev libbz2-dev \
+libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev \
+xz-utils tk-dev libffi-dev liblzma-dev python-openssl git python3-venv python-is-python3
+
+curl https://pyenv.run | bash
 ```
 
-Install pyenv
-```bash
-curl https://pyenv.run | bash
+After installing, it may suggest to add initialization code to ~/.bashrc. Do that.
+
+To apply the changes to ~/.bashrc (or ~/.zshrc), run:
+```
+exec $SHELL --login
 ```
 
 Install Python 3.7
 ```bash
 pyenv install 3.7.7
 ```
-After installing, it may suggest to add initialization code to `~/.bashrc`. Do that.
 
-Install Poetry
+Install [Poetry](https://python-poetry.org/)
+```
+curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
+
+exec $SHELL --login
+```
+
+Install Bluetooth dependencies
 ```bash
-pip3 install --user poetry
+sudo apt install -y \
+    libbluetooth-dev
 ```
 
 Configure and install the environment used for this project.
-__Run in the root of the cloned brewblox-tilt directory__
+
+**Run in the root of the cloned brewblox-tilt directory**
 ```bash
-pyenv local 3.7.7
+poetry run pip install --upgrade pip
 poetry install
 ```
 
@@ -183,20 +183,24 @@ Visual Studio code with suggested settings does this automatically whenever you 
 poetry shell
 ```
 
-You can build a docker container for x86 using the following:
+Install [Docker](https://www.docker.com/101-tutorial)
+```
+curl -sL get.docker.com | sh
 
-```bash
-brewblox-dev localbuild
+sudo usermod -aG docker $USER
+
+reboot
 ```
 
-Or for ARM using the following:
+To build a local Docker image:
 
 ```bash
-brewblox-dev localbuild --arch arm
+bash docker/before_build.sh
+docker build --tag brewblox/brewblox-tilt:local docker
 ```
 
 You can then run this container using the following:
 
 ```bash
-docker run --net=host --privileged -v ~/brewblox/tilt:/share j616s/brewblox-tilt:local
+docker run -it --rm --net=host --privileged -v ~/brewblox/tilt:/share brewblox/brewblox-tilt:local
 ```

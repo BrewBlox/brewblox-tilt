@@ -40,7 +40,9 @@ steps:
   displayName: Export build variables
 
 - bash: |
-    pip install poetry
+    sudo apt update -y
+    sudo apt install -y libbluetooth-dev
+    pip install poetry wheel
     poetry install
   displayName: Install dependencies
 

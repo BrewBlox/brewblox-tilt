@@ -1,0 +1,13 @@
+version: '3.7'
+services:
+  eventbus:
+    image: brewblox/mosquitto:develop
+    ports:
+      - "1883:1883"
+  tilt:
+    image: brewblox/brewblox-tilt:develop
+    privileged: true
+    network_mode: host
+    command: --mqtt-protocol=mqtt --debug
+    volumes:
+      - ./:/app
