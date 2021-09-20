@@ -1,4 +1,4 @@
-FROM python:3.7 as base
+FROM python:3.7-buster as base
 
 COPY ./dist /app/dist
 COPY ./requirements.txt /app/requirements.txt
@@ -12,7 +12,7 @@ RUN set -ex \
     && pip3 wheel --wheel-dir=/wheeley -r /app/requirements.txt \
     && pip3 wheel --wheel-dir=/wheeley /app/dist/*
 
-FROM python:3.7-slim
+FROM python:3.7-slim-buster
 WORKDIR /app
 
 ARG service_info=UNKNOWN
