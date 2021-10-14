@@ -20,8 +20,6 @@ async def _open_socket() -> Any:
     try:
         return blescan.open_socket()
 
-    except asyncio.CancelledError:
-        raise
     except Exception as e:
         LOGGER.error(f'Error accessing bluetooth device: {strex(e)}', exc_info=True)
         await asyncio.sleep(EXIT_DELAY_S)  # Avoid lockup caused by service reboots
@@ -33,8 +31,6 @@ async def _scan_socket(sock) -> List[blescan.TiltEventData]:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, blescan.scan, sock, 10)
 
-    except asyncio.CancelledError:
-        raise
     except Exception as e:
         LOGGER.error(f'Error accessing bluetooth device whilst scanning: {strex(e)}', exc_info=True)
         await asyncio.sleep(EXIT_DELAY_S)  # Avoid lockup caused by service reboots
