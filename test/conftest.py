@@ -19,6 +19,7 @@ def log_enabled():
     """Sets log level to DEBUG for all test functions.
     Allows all logged messages to be captured during pytest runs"""
     logging.getLogger().setLevel(logging.DEBUG)
+    logging.captureWarnings(True)
 
 
 @pytest.fixture
@@ -46,7 +47,7 @@ def sys_args(app_config) -> list:
         '--lower-bound', app_config['lower_bound'],
         '--upper-bound', app_config['upper_bound'],
         '--inactive-scan-interval', app_config['inactive_scan_interval'],
-        '--active-scan-interval', app_config['scan_interval'],
+        '--active-scan-interval', app_config['active_scan_interval'],
     ]]
 
 

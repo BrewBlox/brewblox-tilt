@@ -5,9 +5,16 @@ services:
     ports:
       - "1883:1883"
   tilt:
-    image: brewblox/brewblox-tilt:develop
+    # Manually build the "local" image before use
+    image: brewblox/brewblox-tilt:local
     privileged: true
     network_mode: host
     command: --mqtt-protocol=mqtt --debug
+    restart: unless-stopped
     volumes:
-      - ./:/app
+      - type: bind
+        source: ./
+        target: /app
+      - type: bind
+        source: ./share
+        target: /share

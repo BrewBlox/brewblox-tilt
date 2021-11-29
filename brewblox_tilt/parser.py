@@ -1,30 +1,35 @@
 import csv
-import os.path
-from functools import reduce
-from typing import List, Optional
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
 from brewblox_service import brewblox_logger
 from pint import UnitRegistry
 
-from brewblox_tilt import blescan
+from brewblox_tilt import const, names
 
 LOGGER = brewblox_logger(__name__)
 ureg = UnitRegistry()
 Q_ = ureg.Quantity
 
-SG_CAL_FILE_PATH = '/share/SGCal.csv'
-TEMP_CAL_FILE_PATH = '/share/tempCal.csv'
-TILT_COLOURS = {
-    'a495bb10c5b14b44b5121370f02d74de': 'Red',
-    'a495bb20c5b14b44b5121370f02d74de': 'Green',
-    'a495bb30c5b14b44b5121370f02d74de': 'Black',
-    'a495bb40c5b14b44b5121370f02d74de': 'Purple',
-    'a495bb50c5b14b44b5121370f02d74de': 'Orange',
-    'a495bb60c5b14b44b5121370f02d74de': 'Blue',
-    'a495bb70c5b14b44b5121370f02d74de': 'Yellow',
-    'a495bb80c5b14b44b5121370f02d74de': 'Pink'
-}
+
+@dataclass
+class TiltEvent:
+    mac: str
+    uuid: str
+    major: int
+    minor: int
+    txpower: int
+    rssi: int
+
+
+@dataclass
+class TiltMessage:
+    name: str
+    mac: str
+    color: str
+    data: dict
 
 
 def deg_f_to_c(value_f: Optional[float]) -> Optional[float]:
@@ -46,29 +51,24 @@ def sg_to_plato(sg: Optional[float]) -> Optional[float]:
 
 
 class Calibrator():
-    def __init__(self, file):
-        self.cal_tables = {}
-        self.cal_polys = {}
-        self.load_file(file)
+    def __init__(self, file: Union[Path, str]) -> None:
+        self.cal_polys: dict[str, np.poly1d] = {}
+        self.keys: set[str] = set()
+        self.path = Path(file)
+        self.path.touch()
+        self.path.chmod(0o666)
 
-    def load_file(self, file: str):
-        if not os.path.exists(file):
-            LOGGER.warning(
-                f"Calibration file `{file}` not found. Calibrated values won't be provided.")
-            return
+        cal_tables = {}
 
         # Load calibration CSV
-        with open(file, 'r', newline='') as f:
+        with open(self.path, newline='') as f:
             reader = csv.reader(f, delimiter=',')
             for line in reader:
-                colour = None
+                key = None  # MAC or name
                 uncal = None
                 cal = None
 
-                colour = line[0].strip().capitalize()
-                if colour not in TILT_COLOURS.values():
-                    LOGGER.warning(f'Unknown tilt colour `{line[0]}`. Ignoring line.')
-                    continue
+                key = line[0].strip().lower()
 
                 try:
                     uncal = float(line[1].strip())
@@ -82,57 +82,54 @@ class Calibrator():
                     LOGGER.warning(f'Calibrated value `{line[2]}` not a float. Ignoring line.')
                     continue
 
-                self.cal_tables.setdefault(colour, {
+                self.keys.add(key)
+                data = cal_tables.setdefault(key, {
                     'uncal': [],
                     'cal': [],
                 })
-                self.cal_tables[colour]['uncal'].append(uncal)
-                self.cal_tables[colour]['cal'].append(cal)
+                data['uncal'].append(uncal)
+                data['cal'].append(cal)
 
         # Use polyfit to fit a cubic polynomial curve to calibration values
         # Then create a polynomical from the values produced by polyfit
-        for colour in self.cal_tables:
-            x = np.array(self.cal_tables[colour]['uncal'])
-            y = np.array(self.cal_tables[colour]['cal'])
+        for key, data in cal_tables.items():
+            x = np.array(data['uncal'])
+            y = np.array(data['cal'])
             z = np.polyfit(x, y, 3)
-            self.cal_polys[colour] = np.poly1d(z)
+            self.cal_polys[key] = np.poly1d(z)
 
-        key_str = ', '.join(self.cal_polys.keys())
-        LOGGER.info(f'Calibration file {file} loaded for colours: {key_str}')
+        LOGGER.info(f'Calibration values loaded from `{self.path}`: keys={*self.cal_polys.keys(),}')
 
-    def calibrated_value(self, colour: str, value: float, ndigits=0) -> Optional[float]:
+    def calibrated_value(self, key_candidates: list[str], value: float, ndigits=0) -> Optional[float]:
         # Use polynomials calculated above to calibrate values
-        if colour in self.cal_polys:
-            return round(self.cal_polys[colour](value), ndigits)
-        else:
-            return None
+        # Both MAC and device name are valid keys in calibration files
+        # Check whether any of the given keys is present
+        for key in [k.lower() for k in key_candidates]:
+            if key in self.cal_polys:
+                return round(self.cal_polys[key](value), ndigits)
+        return None
 
 
 class EventDataParser():
     def __init__(self, app):
-        self.known_tilts = set()
         self.lower_bound = app['config']['lower_bound']
         self.upper_bound = app['config']['upper_bound']
 
-        self.sg_cal = Calibrator(SG_CAL_FILE_PATH)
-        self.temp_cal = Calibrator(TEMP_CAL_FILE_PATH)
+        const.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        self.registry = names.DeviceNameRegistry(const.DEVICES_FILE_PATH)
+        self.sg_cal = Calibrator(const.SG_CAL_FILE_PATH)
+        self.temp_cal = Calibrator(const.TEMP_CAL_FILE_PATH)
 
-    def _decode_event_data(self, event: blescan.TiltEventData) -> Optional[dict]:
+    def _decode_event_data(self, event: TiltEvent) -> Optional[dict]:
         """
         Extract raw temp and SG values from the event data object.
 
         Returns None if event data is invalid.
         """
+        # The Tilt color is identified by the UUID field in the iBeacon packet
+        color = const.TILT_UUID_COLORS.get(event.uuid, None)
 
-        # Tilt uses a similar data layout to iBeacons accross manufacturer data
-        # hex digits 8 - 50. Digits 8-40 contain the ID of the 'colour' of the
-        # device. Digits 40-44 contain the temperature in f as an integer.
-        # Digits 44-48 contain the specific gravity * 1000 (i.e. the 'points)
-        # as an integer.
-        colour = TILT_COLOURS.get(event.uuid, None)
-
-        if colour is None:
-            # UUID is not for a Tilt
+        if color is None:
             return None
 
         temp_f = event.major
@@ -148,20 +145,21 @@ class EventDataParser():
         else:
             sg = sg / 1000
 
-        # Garbled bluetooth packets may result in wildly inaccurate readings
-        # We want to discard SG values that are objectively impossible
+        # The Tilt sometimes broadcasts SG values in the millions
+        # Prevent data pollution by discarding values that are physically impossible
         if sg < self.lower_bound or sg > self.upper_bound:
-            LOGGER.warn(f'Discarding Tilt event for {colour}. SG={sg} bounds=[{self.lowerBound}, {self.upperBound}]')
+            LOGGER.warning(f'Discarding Tilt event for {color}/{event.mac}. ' +
+                           f'SG={sg} bounds=[{self.lower_bound}, {self.upper_bound}]')
             return None
 
         return {
-            'colour': colour,
+            'color': color,
             'temp_f': temp_f,
             'sg': sg,
             'is_pro': is_tilt_pro,
         }
 
-    def _add_parsed_event(self, message: dict, event: blescan.TiltEventData) -> dict:
+    def _parse_event(self, event: TiltEvent) -> Optional[TiltMessage]:
         """
         Adds raw and calibrated values for a single Tilt event to the combined `message` object.
 
@@ -169,13 +167,11 @@ class EventDataParser():
         """
         decoded = self._decode_event_data(event)
         if decoded is None:
-            return message
+            return None
 
-        colour = decoded['colour']
-
-        if colour not in self.known_tilts:
-            self.known_tilts.add(colour)
-            LOGGER.info(f'Found Tilt: {colour}')
+        color = decoded['color']
+        mac = event.mac.strip().replace(':', '').upper()
+        name = self.registry.lookup(mac, color)
 
         raw_temp_f = decoded['temp_f']
         raw_temp_c = deg_f_to_c(raw_temp_f)
@@ -184,41 +180,56 @@ class EventDataParser():
         temp_digits = 1 if is_pro else 0
         sg_digits = 4 if is_pro else 3
 
-        cal_temp_f = self.temp_cal.calibrated_value(colour, raw_temp_f, temp_digits)
+        cal_temp_f = self.temp_cal.calibrated_value([mac, name],
+                                                    raw_temp_f,
+                                                    temp_digits)
         cal_temp_c = deg_f_to_c(cal_temp_f)
 
         raw_sg = decoded['sg']
-        cal_sg = self.sg_cal.calibrated_value(colour, raw_sg, sg_digits)
+        cal_sg = self.sg_cal.calibrated_value([mac, name],
+                                              raw_sg,
+                                              sg_digits)
 
         raw_plato = sg_to_plato(raw_sg)
         cal_plato = sg_to_plato(cal_sg)
 
-        submessage = {
-            'Temperature[degF]': raw_temp_f,
-            'Temperature[degC]': raw_temp_c,
-            'Specific gravity': raw_sg,
-            'Plato[degP]': raw_plato,
-            'Signal strength[dBm]': event.rssi,
+        data = {
+            'temperature[degF]': raw_temp_f,
+            'temperature[degC]': raw_temp_c,
+            'specificGravity': raw_sg,
+            'plato[degP]': raw_plato,
+            'rssi[dBm]': event.rssi,
         }
 
+        # If calibrated values are present, they become the default
+        # Uncalibrated values are only present if calibrated values are also present
         if cal_temp_f is not None:
-            submessage['Calibrated temperature[degF]'] = cal_temp_f
+            data['temperature[degF]'] = cal_temp_f
+            data['uncalibratedTemperature[degF]'] = raw_temp_f
         if cal_temp_c is not None:
-            submessage['Calibrated temperature[degC]'] = cal_temp_c
+            data['temperature[degC]'] = cal_temp_c
+            data['uncalibratedTemperature[degC]'] = raw_temp_c
         if cal_sg is not None:
-            submessage['Calibrated specific gravity'] = cal_sg
+            data['specificGravity'] = cal_sg
+            data['uncalibratedSpecificGravity'] = raw_sg
         if cal_plato is not None:
-            submessage['Calibrated plato[degP]'] = cal_plato
+            data['plato[degP]'] = cal_plato
+            data['uncalibratedPlato[degP]'] = raw_plato
 
-        message[colour] = submessage
-        return message
+        return TiltMessage(name=name,
+                           mac=mac,
+                           color=color,
+                           data=data)
 
-    def parse(self, events: List[blescan.TiltEventData]) -> dict:
+    def parse(self, events: list[TiltEvent]) -> list[TiltMessage]:
         """
-        Converts a list of Tilt events into a combined message.
-        Tilt colour is used as key, and data includes raw and calibrated values.
-
-        If `events` is empty or only includes invalid events, an empty dict is returned.
+        Converts a list of Tilt events into a list of Tilt message.
+        Invalid events are excluded.
         """
-        message = reduce(self._add_parsed_event, events, {})
-        return message
+        messages = [self._parse_event(evt) for evt in events]
+        self.registry.commit()
+        return [msg for msg in messages if msg is not None]
+
+    def apply_custom_names(self, names: dict[str, str]) -> None:
+        self.registry.apply_custom_names(names)
+        self.registry.commit()
