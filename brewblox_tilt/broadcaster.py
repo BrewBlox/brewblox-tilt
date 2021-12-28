@@ -1,11 +1,12 @@
 import asyncio
 import time
+from os import getenv
 from pathlib import Path
 
 from aiohttp import web
 from beacontools import (BeaconScanner, BluetoothAddressType,
                          IBeaconAdvertisement, IBeaconFilter)
-from beacontools.scanner import HCIVersion
+from beacontools.scanner import HCIVersion, Monitor
 from brewblox_service import brewblox_logger, features, mqtt, repeater
 
 from brewblox_tilt import const, parser
@@ -67,15 +68,29 @@ class Broadcaster(repeater.RepeaterFeature):
                 await asyncio.sleep(HCI_SCAN_INTERVAL_S)
         return device_id
 
-    def apply_pi4_hack(self):
-        model_file = Path('/sys/firmware/devicetree/base/model')
-        if not model_file.exists():
-            return
-        content = model_file.read_text()
-        if 'Pi 4' in content:
+    def override_hci_version(self):
+        try:
+            hci_version_override = HCIVersion(int(getenv('HCI_VERSION')))
+        except (TypeError, ValueError):
+            hci_version_override = None
+
+        def wrapped_get_hci_version():
             # https://github.com/citruz/beacontools/issues/65
-            LOGGER.info('Pi 4 detected. Applying Bluetooth version hack.')
-            self.scanner._mon.get_hci_version = lambda: HCIVersion.BT_CORE_SPEC_4_2
+            max_hci_version = HCIVersion.BT_CORE_SPEC_4_2
+            adapter_hci_version = Monitor.get_hci_version(self.scanner._mon)
+
+            if hci_version_override is not None:
+                hci_version = hci_version_override
+            else:
+                hci_version = min(adapter_hci_version, max_hci_version)
+
+            LOGGER.info(f'HCI Version native = {repr(adapter_hci_version)}')
+            LOGGER.info(f'HCI Version env = {repr(hci_version_override)}')
+            LOGGER.info(f'HCI Version max = {repr(max_hci_version)}')
+            LOGGER.info(f'HCI Version used = {repr(hci_version)}')
+            return hci_version
+
+        self.scanner._mon.get_hci_version = wrapped_get_hci_version
 
     async def prepare(self):
         await mqtt.listen(self.app, self.names_topic, self.on_names_change)
@@ -93,7 +108,7 @@ class Broadcaster(repeater.RepeaterFeature):
             scan_parameters={
                 'address_type': BluetoothAddressType.PUBLIC,
             })
-        self.apply_pi4_hack()
+        self.override_hci_version()
         self.scanner.start()
 
     async def shutdown(self, app: web.Application):
@@ -122,6 +137,18 @@ class Broadcaster(repeater.RepeaterFeature):
             self.interval = self.inactive_scan_interval
         else:
             self.interval = self.active_scan_interval
+
+        # Always broadcast a presence message
+        # This will make the service show up in the UI even without active Tilts
+        await mqtt.publish(self.app,
+                           self.state_topic,
+                           {
+                               'key': self.name,
+                               'type': 'Tilt.state.service',
+                               'timestamp': time_ms(),
+                           },
+                           err=False,
+                           retain=True)
 
         if not messages:
             return

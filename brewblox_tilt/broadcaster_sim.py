@@ -14,6 +14,34 @@ def time_ms():
     return time.time_ns() // 1000000
 
 
+class Simulation:
+
+    def __init__(self, simulated: str) -> None:
+        self.uuid = next((
+            uuid
+            for uuid, color in const.TILT_UUID_COLORS.items()
+            if color.upper() == simulated.upper()
+        ), '')
+        self.mac = self.uuid.replace('-', '').upper()[:12]
+
+        self.interval = 1
+        self.temp_f = 68
+        self.raw_sg = 1050
+        self.rssi = -80
+
+    def update(self) -> parser.TiltEvent:
+        self.temp_f += uniform(-2, 2)
+        self.raw_sg += uniform(-10, 10)
+        self.rssi += uniform(-1, 1)
+
+        return parser.TiltEvent(mac=self.mac,
+                                uuid=self.uuid,
+                                major=self.temp_f,
+                                minor=self.raw_sg,
+                                txpower=0,
+                                rssi=self.rssi)
+
+
 class BroadcasterSim(repeater.RepeaterFeature):
 
     def __init__(self, app: web.Application):
@@ -26,18 +54,12 @@ class BroadcasterSim(repeater.RepeaterFeature):
         self.history_topic = config['history_topic'] + f'/{self.name}'
         self.names_topic = f'brewcast/tilt/{self.name}/names'
 
-        self.parser = parser.EventDataParser(app)
-        self.uuid = next((
-            uuid
-            for uuid, color in const.TILT_UUID_COLORS.items()
-            if color.upper() == config['simulate'].upper()
-        ), list(const.TILT_UUID_COLORS.keys())[0])  # Default to first
-        self.mac = self.uuid.replace('-', '').upper()[:12]
-
         self.interval = 1
-        self.temp_f = 68
-        self.raw_sg = 1050
-        self.rssi = -80
+        self.parser = parser.EventDataParser(app)
+        self.simulations = [Simulation(simulated)
+                            for simulated in config['simulate']]
+
+        LOGGER.info(f'Started simulation for {config["simulate"]}')
 
     async def on_names_change(self, topic: str, data: dict):
         self.parser.apply_custom_names(data)
@@ -54,18 +76,22 @@ class BroadcasterSim(repeater.RepeaterFeature):
         await asyncio.sleep(self.interval)
         self.interval = self.active_scan_interval
 
-        self.temp_f += uniform(-2, 2)
-        self.raw_sg += uniform(-10, 10)
-        self.rssi += uniform(-1, 1)
+        events = {sim.mac: sim.update() for sim in self.simulations}
+        messages = self.parser.parse(list(events.values()))
 
-        event = parser.TiltEvent(mac=self.mac,
-                                 uuid=self.uuid,
-                                 major=self.temp_f,
-                                 minor=self.raw_sg,
-                                 txpower=0,
-                                 rssi=self.rssi)
+        await mqtt.publish(self.app,
+                           self.state_topic,
+                           {
+                               'key': self.name,
+                               'type': 'Tilt.state.service',
+                               'timestamp': time_ms(),
+                           },
+                           err=False,
+                           retain=True)
 
-        messages = self.parser.parse([event])
+        if not messages:
+            return
+
         LOGGER.debug(messages)
 
         # Publish history

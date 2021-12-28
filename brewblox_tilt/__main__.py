@@ -25,9 +25,10 @@ def create_parser(default_name='tilt'):
                         type=float,
                         default=10)
     parser.add_argument('--simulate',
+                        nargs='*',
                         help='Start in simulation mode. '
                         'This will not attempt to read Bluetooth devices, but will publish random values.'
-                        'The value for this argument will be used as color',
+                        'The values for this argument will be used as color',
                         default=None)
 
     # Assumes a default configuration of running with --net=host
@@ -42,7 +43,7 @@ def main():
     scheduler.setup(app)
     mqtt.setup(app)
 
-    if config['simulate']:
+    if config['simulate'] is not None:
         broadcaster_sim.setup(app)
     else:
         broadcaster.setup(app)

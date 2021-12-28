@@ -9,7 +9,7 @@ services:
     image: brewblox/brewblox-tilt:local
     privileged: true
     network_mode: host
-    command: --mqtt-protocol=mqtt --debug
+    command: --mqtt-protocol=mqtt --debug --simulate orange red
     restart: unless-stopped
     volumes:
       - type: bind
