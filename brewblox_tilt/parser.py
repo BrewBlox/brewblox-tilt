@@ -117,6 +117,7 @@ class EventDataParser():
 
         const.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         self.registry = names.DeviceNameRegistry(const.DEVICES_FILE_PATH)
+        self.session_macs: set[str] = set()
         self.sg_cal = Calibrator(const.SG_CAL_FILE_PATH)
         self.temp_cal = Calibrator(const.TEMP_CAL_FILE_PATH)
 
@@ -172,6 +173,10 @@ class EventDataParser():
         color = decoded['color']
         mac = event.mac.strip().replace(':', '').upper()
         name = self.registry.lookup(mac, color)
+
+        if mac not in self.session_macs:
+            self.session_macs.add(mac)
+            LOGGER.info(f'Tilt detected: {mac=}, {color=}, {name=}')
 
         raw_temp_f = decoded['temp_f']
         raw_temp_c = deg_f_to_c(raw_temp_f)

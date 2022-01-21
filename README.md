@@ -168,64 +168,12 @@ As the Tilt does not talk directly to the Spark controller, you cannot use your 
 
 ## Development
 
-To get started:
+To install pyenv + poetry, see the instructions at https://github.com/BrewBlox/brewblox-boilerplate#readme
 
-Install [Pyenv](https://github.com/pyenv/pyenv):
-```
-sudo apt-get update -y && sudo apt-get install -y make build-essential libssl-dev zlib1g-dev libbz2-dev \
-libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev \
-xz-utils tk-dev libffi-dev liblzma-dev python-openssl git python3-venv python-is-python3
+You will also need Bluetooth support on the host to build the Python packages:
 
-curl https://pyenv.run | bash
-```
-
-After installing, it may suggest to add initialization code to ~/.bashrc. Do that.
-
-To apply the changes to ~/.bashrc (or ~/.zshrc), run:
-```
-exec $SHELL --login
-```
-
-Install Python 3.9
 ```bash
-pyenv install 3.9.7
-```
-
-Install [Poetry](https://python-poetry.org/)
-```
-curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
-
-exec $SHELL --login
-```
-
-Install Bluetooth dependencies
-```bash
-sudo apt install -y \
-    libbluetooth-dev
-```
-
-Configure and install the environment used for this project.
-
-**Run in the root of the cloned brewblox-tilt directory**
-```bash
-poetry run pip install --upgrade pip
-poetry install
-```
-
-During development, you need to have your environment activated. When it is activated, your terminal prompt is prefixed with (.venv).
-
-Visual Studio Code with suggested settings does this automatically whenever you open a .py file. If you prefer using a different editor, you can do it manually by running:
-```bash
-poetry shell
-```
-
-Install [Docker](https://www.docker.com/101-tutorial)
-```
-curl -sL get.docker.com | sh
-
-sudo usermod -aG docker $USER
-
-reboot
+sudo apt update && sudo apt install -y libbluetooth-dev
 ```
 
 To build a local Docker image:
