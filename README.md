@@ -88,9 +88,9 @@ Whenever a Tilt is detected, it is assigned a unique name.
 The first Tilt of a given color will be named after the color.
 If you have more than one Tilt of a single color, the name will be incremented.
 For example, if you have three red Tilt devices, the names will be:
-- Tilt
-- Tilt-2
-- Tilt-3
+- Red
+- Red-2
+- Red-3
 
 Device names can be edited in the Brewblox UI, or in the `./tilt/devices.yml` file.
 In the `./tilt/devices.yml` file, device names are stored under `names`. The key is the device MAC address in uppercase without `:` separators, and the value is the name.
