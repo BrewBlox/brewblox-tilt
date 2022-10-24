@@ -4,25 +4,35 @@ from typing import Union
 
 from brewblox_service import brewblox_logger
 from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from brewblox_tilt import const
 
 LOGGER = brewblox_logger(__name__)
 
 
-class DeviceNameRegistry():
+class DeviceConfig():
     def __init__(self, file: Union[Path, str]) -> None:
         self.path = Path(file)
         self.yaml = YAML()
         self.changed = False
-        self.devices = {}
+        self.device_config = {}
 
         self.path.touch()
         self.path.chmod(0o666)
 
-        self.devices: CommentedMap = self.yaml.load(self.path) or CommentedMap()
-        self.devices.setdefault('names', CommentedMap())
+        self.device_config: CommentedMap = self.yaml.load(self.path) or CommentedMap()
+        self.device_config.setdefault('names', CommentedMap())
+        self.device_config.setdefault('sync', CommentedSeq())
+
+        if not self.sync:
+            self.sync.append({
+                'type': 'TempSensorExternal',
+                'tilt': 'ExampleTilt',
+                'service': 'example-spark-service',
+                'block': 'Example Block Name'
+            })
+            self.changed = True
 
         for mac, name in list(self.names.items()):
             if not re.match(const.DEVICE_NAME_PATTERN, name):
@@ -31,11 +41,15 @@ class DeviceNameRegistry():
                 self.names[mac] = sanitized
                 self.changed = True
 
-        LOGGER.info(f'Device names loaded from `{self.path}`: {str(dict(self.names))}')
+        LOGGER.info(f'Device config loaded from `{self.path}`: {str(dict(self.names))}')
 
     @property
     def names(self) -> dict[str, str]:
-        return self.devices['names']
+        return self.device_config['names']
+
+    @property
+    def sync(self) -> list[dict[str, str]]:
+        return self.device_config['sync']
 
     def _assign(self, base_name: str) -> str:
         used: set[str] = set(self.names.values())
@@ -81,5 +95,5 @@ class DeviceNameRegistry():
 
     def commit(self):
         if self.changed:
-            self.yaml.dump(self.devices, self.path)
+            self.yaml.dump(self.device_config, self.path)
             self.changed = False

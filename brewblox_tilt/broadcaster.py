@@ -187,6 +187,20 @@ class Broadcaster(repeater.RepeaterFeature):
                                err=False,
                                retain=True)
 
+            for sync in msg.sync:
+                if sync.type == 'TempSensorExternal':
+                    await mqtt.publish(self.app,
+                                       'brewcast/spark/blocks/patch',
+                                       {
+                                           'id': sync.block,
+                                           'serviceId': sync.service,
+                                           'type': 'TempSensorExternal',
+                                           'data': {
+                                               'setting[degC]': msg.data['temperature[degC]'],
+                                           },
+                                       },
+                                       err=False)
+
 
 def setup(app):
     features.add(app, Broadcaster(app))

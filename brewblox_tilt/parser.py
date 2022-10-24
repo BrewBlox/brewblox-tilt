@@ -7,7 +7,7 @@ import numpy as np
 from brewblox_service import brewblox_logger
 from pint import UnitRegistry
 
-from brewblox_tilt import const, names
+from brewblox_tilt import config, const
 
 LOGGER = brewblox_logger(__name__)
 ureg = UnitRegistry()
@@ -25,11 +25,19 @@ class TiltEvent:
 
 
 @dataclass
+class TiltTemperatureSync:
+    type: str
+    service: str
+    block: str
+
+
+@dataclass
 class TiltMessage:
     name: str
     mac: str
     color: str
     data: dict
+    sync: list[TiltTemperatureSync]
 
 
 def deg_f_to_c(value_f: Optional[float]) -> Optional[float]:
@@ -116,7 +124,7 @@ class EventDataParser():
         self.upper_bound = app['config']['upper_bound']
 
         const.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        self.registry = names.DeviceNameRegistry(const.DEVICES_FILE_PATH)
+        self.config = config.DeviceConfig(const.DEVICES_FILE_PATH)
         self.session_macs: set[str] = set()
         self.sg_cal = Calibrator(const.SG_CAL_FILE_PATH)
         self.temp_cal = Calibrator(const.TEMP_CAL_FILE_PATH)
@@ -172,7 +180,7 @@ class EventDataParser():
 
         color = decoded['color']
         mac = event.mac.strip().replace(':', '').upper()
-        name = self.registry.lookup(mac, color)
+        name = self.config.lookup(mac, color)
 
         if mac not in self.session_macs:
             self.session_macs.add(mac)
@@ -221,10 +229,31 @@ class EventDataParser():
             data['plato[degP]'] = cal_plato
             data['uncalibratedPlato[degP]'] = raw_plato
 
+        sync: list[TiltTemperatureSync] = []
+
+        for src in self.config.sync:
+            sync_tilt = src.get('tilt')
+            sync_type = src.get('type')
+            sync_service = src.get('service')
+            sync_block = src.get('block')
+
+            if sync_tilt != name \
+                    or not sync_type \
+                    or not sync_service \
+                    or not sync_block:
+                continue
+
+            sync.append(TiltTemperatureSync(
+                type=sync_type,
+                service=sync_service,
+                block=sync_block,
+            ))
+
         return TiltMessage(name=name,
                            mac=mac,
                            color=color,
-                           data=data)
+                           data=data,
+                           sync=sync)
 
     def parse(self, events: list[TiltEvent]) -> list[TiltMessage]:
         """
@@ -232,9 +261,9 @@ class EventDataParser():
         Invalid events are excluded.
         """
         messages = [self._parse_event(evt) for evt in events]
-        self.registry.commit()
+        self.config.commit()
         return [msg for msg in messages if msg is not None]
 
     def apply_custom_names(self, names: dict[str, str]) -> None:
-        self.registry.apply_custom_names(names)
-        self.registry.commit()
+        self.config.apply_custom_names(names)
+        self.config.commit()

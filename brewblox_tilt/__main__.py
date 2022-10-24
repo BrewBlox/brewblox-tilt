@@ -50,7 +50,7 @@ def main():
 
     # We have no meaningful REST API, so we set listen_http to False
     service.furnish(app)
-    service.run(app, False)
+    service.run(app, listen_http=False)
 
 
 if __name__ == '__main__':

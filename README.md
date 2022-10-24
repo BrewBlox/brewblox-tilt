@@ -18,7 +18,7 @@ This service is a continuation of [James Sandford](https://github.com/j616)'s [T
 You can use the `brewblox-ctl` tool to add a new Tilt service to your system.
 This will create the `./tilt` directory, and edit your `docker-compose.yml` file.
 
-```
+```bash
 brewblox-ctl add-tilt
 ```
 
@@ -63,11 +63,13 @@ services:
 ```
 
 Create the directory for the tilt files
+
 ```bash
 mkdir ./tilt
 ```
 
 Start the service with the following command
+
 ```bash
 docker-compose up -d
 ```
@@ -82,12 +84,13 @@ If you are using a non-default HTTPS port (e.g. if you run brewblox on a NAS), y
 
 Once the Tilt service receives data from your Tilt(s), it should be available as graph metrics in Brewblox.
 
-## Device names
+### Device names
 
 Whenever a Tilt is detected, it is assigned a unique name.
 The first Tilt of a given color will be named after the color.
 If you have more than one Tilt of a single color, the name will be incremented.
 For example, if you have three red Tilt devices, the names will be:
+
 - Red
 - Red-2
 - Red-3
@@ -97,6 +100,7 @@ In the `./tilt/devices.yml` file, device names are stored under `names`. The key
 If you edit the file, you must restart the service for the changes to take effect.
 
 Example `./tilt/devices.yml`:
+
 ```yaml
 names:
   DD7F97FC141E: Purple
@@ -104,10 +108,33 @@ names:
 ```
 
 Device names must:
+
 - Consist of at least 1, and at most 100 characters.
 - Contain only alphanumerical characters, spaces, and `_-()|`.
 
 If device names do not meet these criteria, they will be sanitized on startup.
+
+### Sensor synchronization
+
+Measured values can be pushed to Spark *Temp Sensor (External)* blocks.
+To set this up, create the block, and add an entry under `sync` to the `./tilt/devices.yml` file
+
+```yaml
+names:
+  DD7F97FC141E: Purple
+  AA7F97FC141E: Red
+sync:
+  - type: TempSensorExternal
+    tilt: Purple
+    service: spark-one
+    block: Purple Tilt Sensor
+```
+
+**sync** is a list of objects. Each object should have the following fields:
+
+- **type** is a constant value.
+- **service** is the Service ID of your Spark service.
+- **block** is the block ID of your *Temp Sensor (External)* block.
 
 ### Calibration
 
@@ -115,7 +142,7 @@ Calibration is optional. While the Tilt provides a good indication of fermentati
 
 Calibration is available for SG and temperature values. For both, calibration data should be provided in a CSV file, with the syntax:
 
-```
+```txt
 <device identifer>, <uncalibrated_value>, <calibrated_value>
 ```
 
@@ -123,14 +150,15 @@ The device identifier is either the Tilt MAC address without `:` separators (eg.
 
 Device identifiers are case insensitive: `black` will match the device names `black`, `Black`, `BLACK`, etc.
 
-**SG Calibration**
+#### SG Calibration
 
 If you wish to calibrate your Specific Gravity readings, create a file called `SGCal.csv` in the `./tilt` directory.
 
 The uncalibrated values are the raw values from the Tilt. The calibrated values are those from a known good hydrometer or calculated when creating your calibration solution. Calibration solutions can be made by adding sugar/DME to water a little at a time to increase the SG of the solution. You can take readings using a hydrometer and the Tilt app as you go. You can include calibration values for multiple colours of Tilt in the calibration file.
 
 Example `./tilt/SGCal.csv`:
-```
+
+```csv
 Black, 1.000, 1.001
 Black, 1.001, 1.002
 Black, 1.002, 1.003
@@ -144,12 +172,13 @@ Red, 1.004, 1.014
 
 You will need multiple calibration points. We recommend at least 6 distributed evenly across your typical gravity range for each Tilt. For example, if you usually brew with a starting gravity of 1.050, you may choose to calibrate at the values 1.000, 1.010, 1.020, 1.030, 1.040, 1.050, and 1.060. The more calibration points you have, the more accurate the calibrated values the service creates will be. Strange calibrated values from the service are an indication you have used too few or poorly distributed calibration values.
 
-**Temperature calibration**
+#### Temperature calibration
 
 Calibration values for temperature are placed in a file called `tempCal.csv` in the `./tilt` directory. **Temperature values in the calibration file MUST be in Fahrenheit.** The tempCal file can also contain calibration values for multiple Tilts. Again, it should contain at least 6 points distributed evenly across your typical range.
 
 Example `./tilt/tempCal.csv`:
-```
+
+```csv
 Black,39,40
 Black,46,48
 Black,54,55
@@ -168,7 +197,7 @@ As the Tilt does not talk directly to the Spark controller, you cannot use your 
 
 ## Development
 
-To install pyenv + poetry, see the instructions at https://github.com/BrewBlox/brewblox-boilerplate#readme
+To install pyenv + poetry, see the instructions at <https://github.com/BrewBlox/brewblox-boilerplate#readme>
 
 You will also need Bluetooth support on the host to build the Python packages:
 
