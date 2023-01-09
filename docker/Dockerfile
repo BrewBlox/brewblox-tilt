@@ -1,10 +1,10 @@
-FROM python:3.9-bullseye as base
-
-COPY ./dist /app/dist
-COPY ./requirements.txt /app/requirements.txt
+FROM python:3.9 as base
 
 ENV PIP_EXTRA_INDEX_URL=https://www.piwheels.org/simple
 ENV PIP_FIND_LINKS=/wheeley
+
+COPY ./dist /app/dist
+COPY ./requirements.txt /app/requirements.txt
 
 RUN set -ex \
     && mkdir /wheeley \
@@ -12,7 +12,7 @@ RUN set -ex \
     && pip3 wheel --wheel-dir=/wheeley -r /app/requirements.txt \
     && pip3 wheel --wheel-dir=/wheeley /app/dist/*
 
-FROM python:3.9-slim-bullseye
+FROM python:3.9-slim
 WORKDIR /app
 
 ARG service_info=UNKNOWN

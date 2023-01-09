@@ -14,6 +14,7 @@ Pint = "^0.17"
 PyBluez = "0.22"
 beacontools = "^2.1.0"
 "ruamel.yaml" = "^0.17.17"
+cryptography = "38.0.1"
 
 [tool.poetry.dev-dependencies]
 pytest-cov = "*"
@@ -28,5 +29,5 @@ pytest = "*"
 aresponses = "*"
 
 [build-system]
-requires = ["poetry>=0.12"]
+requires = ["cryptography==38.0.1", "poetry>=0.12"]
 build-backend = "poetry.masonry.api"
