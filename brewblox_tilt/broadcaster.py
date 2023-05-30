@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 from os import getenv
 from pathlib import Path
@@ -51,8 +52,8 @@ class Broadcaster(repeater.RepeaterFeature):
                                             txpower=packet.tx_power,
                                             rssi=rssi)
 
-    async def on_names_change(self, topic: str, data: dict):
-        self.parser.apply_custom_names(data)
+    async def on_names_change(self, topic: str, payload: str):
+        self.parser.apply_custom_names(json.loads(payload))
 
     async def detect_device_id(self) -> int:
         bt_dir = Path('/sys/class/bluetooth')
@@ -142,11 +143,11 @@ class Broadcaster(repeater.RepeaterFeature):
         # This will make the service show up in the UI even without active Tilts
         await mqtt.publish(self.app,
                            self.state_topic,
-                           {
+                           json.dumps({
                                'key': self.name,
                                'type': 'Tilt.state.service',
                                'timestamp': time_ms(),
-                           },
+                           }),
                            err=False,
                            retain=True)
 
@@ -159,13 +160,13 @@ class Broadcaster(repeater.RepeaterFeature):
         # Devices can share an event
         await mqtt.publish(self.app,
                            self.history_topic,
-                           {
+                           json.dumps({
                                'key': self.name,
                                'data': {
                                    msg.name: msg.data
                                    for msg in messages
                                },
-                           },
+                           }),
                            err=False)
 
         # Publish state
@@ -175,7 +176,7 @@ class Broadcaster(repeater.RepeaterFeature):
         for msg in messages:
             await mqtt.publish(self.app,
                                f'{self.state_topic}/{msg.color}/{msg.mac}',
-                               {
+                               json.dumps({
                                    'key': self.name,
                                    'type': 'Tilt.state',
                                    'timestamp': timestamp,
@@ -183,7 +184,7 @@ class Broadcaster(repeater.RepeaterFeature):
                                    'mac': msg.mac,
                                    'name': msg.name,
                                    'data': msg.data,
-                               },
+                               }),
                                err=False,
                                retain=True)
 
@@ -191,14 +192,14 @@ class Broadcaster(repeater.RepeaterFeature):
                 if sync.type == 'TempSensorExternal':
                     await mqtt.publish(self.app,
                                        'brewcast/spark/blocks/patch',
-                                       {
+                                       json.dumps({
                                            'id': sync.block,
                                            'serviceId': sync.service,
                                            'type': 'TempSensorExternal',
                                            'data': {
                                                'setting[degC]': msg.data['temperature[degC]'],
                                            },
-                                       },
+                                       }),
                                        err=False)
 
 

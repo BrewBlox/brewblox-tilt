@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 from random import uniform
 
@@ -61,8 +62,8 @@ class BroadcasterSim(repeater.RepeaterFeature):
 
         LOGGER.info(f'Started simulation for {config["simulate"]}')
 
-    async def on_names_change(self, topic: str, data: dict):
-        self.parser.apply_custom_names(data)
+    async def on_names_change(self, topic: str, payload: str):
+        self.parser.apply_custom_names(json.loads(payload))
 
     async def prepare(self):
         await mqtt.listen(self.app, self.names_topic, self.on_names_change)
@@ -81,11 +82,11 @@ class BroadcasterSim(repeater.RepeaterFeature):
 
         await mqtt.publish(self.app,
                            self.state_topic,
-                           {
+                           json.dumps({
                                'key': self.name,
                                'type': 'Tilt.state.service',
                                'timestamp': time_ms(),
-                           },
+                           }),
                            err=False,
                            retain=True)
 
@@ -98,13 +99,13 @@ class BroadcasterSim(repeater.RepeaterFeature):
         # Devices can share an event
         await mqtt.publish(self.app,
                            self.history_topic,
-                           {
+                           json.dumps({
                                'key': self.name,
                                'data': {
                                    msg.name: msg.data
                                    for msg in messages
                                },
-                           },
+                           }),
                            err=False)
 
         # Publish state
@@ -114,7 +115,7 @@ class BroadcasterSim(repeater.RepeaterFeature):
         for msg in messages:
             await mqtt.publish(self.app,
                                f'{self.state_topic}/{msg.color}/{msg.mac}',
-                               {
+                               json.dumps({
                                    'key': self.name,
                                    'type': 'Tilt.state',
                                    'timestamp': timestamp,
@@ -122,7 +123,7 @@ class BroadcasterSim(repeater.RepeaterFeature):
                                    'mac': msg.mac,
                                    'name': msg.name,
                                    'data': msg.data,
-                               },
+                               }),
                                err=False,
                                retain=True)
 
@@ -130,14 +131,14 @@ class BroadcasterSim(repeater.RepeaterFeature):
                 if sync.type == 'Spark.Temperature':
                     await mqtt.publish(self.app,
                                        'brewcast/spark/blocks/patch',
-                                       {
+                                       json.dumps({
                                            'id': sync.block,
                                            'serviceId': sync.service,
                                            'type': 'TempSensorExternal',
                                            'data': {
                                                'setting[degC]': msg.data['temperature[degC]'],
                                            },
-                                       },
+                                       }),
                                        err=False)
 
 
