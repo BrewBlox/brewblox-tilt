@@ -1,0 +1,5 @@
+services:
+  mqtt:
+    image: ghcr.io/brewblox/mosquitto:develop
+    ports:
+      - "1883"

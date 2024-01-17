@@ -2,136 +2,67 @@
 Tests brewblox_tilt.parser
 """
 
-import json
-from pathlib import Path
-from tempfile import NamedTemporaryFile, TemporaryDirectory
-
 import pytest
 
-from brewblox_tilt import const, parser
+from brewblox_tilt import const, mqtt, parser
+from brewblox_tilt.stored import calibration, devices
 
 TESTED = parser.__name__
 
-RED_MAC = 'AA7F97FC141E'
-PURPLE_MAC = 'BB7F97FC141E'
-BLACK_MAC = 'DD7F97FC141E'
+
+@pytest.fixture(autouse=True)
+def setup(tempfiles):
+    mqtt.setup()
+    calibration.setup()
+    devices.setup()
+    parser.setup()
 
 
-@pytest.fixture
-def m_sg_file():
-    f = NamedTemporaryFile()
-    f.writelines([
-        f'{s}\n'.encode()
-        for s in [
-            'Black, 1.000, 2.001',
-            'Black, 1.001, 2.002',
-            'Black, 1.002, 2.003',
-            'BLACK, 1.003, 2.004',
-            'Black, 1, Many',
-            'Black, Few, 2.005',
-            ''
-            '"Ferment 1 red", 1.000, 3.010',
-            '"Ferment 1 red", 1.001, 3.011',
-            '"Ferment 1 red", 1.002, 3.012',
-            '"Ferment 1 red", 1.003, 3.013',
-            '"Ferment 1 red", 1.004, 3.014',
-        ]])
-    f.flush()
-    yield f
+def test_data_parser(tilt_macs: dict):
+    data_parser = parser.CV.get()
+    device_config = devices.CV.get()
 
+    red_mac = tilt_macs['red']
+    black_mac = tilt_macs['black']
+    purple_mac = tilt_macs['purple']
 
-@pytest.fixture
-def m_temp_file():
-    f = NamedTemporaryFile()
-    f.writelines([
-        f'{s}\n'.encode()
-        for s in [
-            'Black, 39,40',
-            'Black, 46,48',
-            'Black, 54,55',
-            'Black, 60,62',
-            'Black, 68,70',
-            'Black, 76,76',
-        ]])
-    f.flush()
-    yield f
-
-
-@pytest.fixture
-def m_devices_file():
-    f = NamedTemporaryFile()
-    f.write(json.dumps({'names': {BLACK_MAC: 'Black'}}).encode())
-    f.flush()
-    yield f
-
-
-@pytest.fixture
-def m_config_dir():
-    d = TemporaryDirectory()
-    yield d
-
-
-@pytest.fixture
-def m_files(mocker, m_sg_file, m_temp_file, m_devices_file, m_config_dir):
-    mocker.patch(TESTED + '.const.CONFIG_DIR', Path(m_config_dir.name))
-    mocker.patch(TESTED + '.const.SG_CAL_FILE_PATH', Path(m_sg_file.name))
-    mocker.patch(TESTED + '.const.TEMP_CAL_FILE_PATH', Path(m_temp_file.name))
-    mocker.patch(TESTED + '.const.DEVICES_FILE_PATH', Path(m_devices_file.name))
-
-
-def test_calibrator(m_sg_file):
-    calibrator = parser.Calibrator(m_sg_file.name)
-    assert 'black' in calibrator.cal_polys
-    assert 'ferment 1 red' in calibrator.cal_polys
-    assert calibrator.cal_polys['black'].order == 3
-
-    cal_black_v = calibrator.calibrated_value(['Dummy', 'Black'], 1.002, 3)
-    assert cal_black_v == pytest.approx(2, 0.1)
-
-    cal_red_v = calibrator.calibrated_value(['Ferment 1 red'], 1.002, 3)
-    assert cal_red_v == pytest.approx(3, 0.1)
-
-    assert calibrator.calibrated_value(['Dummy'], 1.002, 3) is None
-
-
-def test_data_parser(app, m_files):
     red_uuid = next((k for k, v in const.TILT_UUID_COLORS.items() if v == 'Red'))
     purple_uuid = next((k for k, v in const.TILT_UUID_COLORS.items() if v == 'Purple'))
     black_uuid = next((k for k, v in const.TILT_UUID_COLORS.items() if v == 'Black'))
-    data_parser = parser.EventDataParser(app)
-    data_parser.apply_custom_names({RED_MAC: 'Ferment 1 red'})
+
+    device_config.apply_custom_names({red_mac: 'Ferment 1 red'})
 
     messages = data_parser.parse([
         # Valid red - SG calibration data
-        parser.TiltEvent(mac=RED_MAC,
+        parser.TiltEvent(mac=red_mac,
                          uuid=red_uuid,
                          major=68,  # temp F
                          minor=1.002*1000,  # raw SG,
                          txpower=0,
                          rssi=-80),
         # Valid black - SG and temp calibration data
-        parser.TiltEvent(mac=BLACK_MAC,
+        parser.TiltEvent(mac=black_mac,
                          uuid=black_uuid,
                          major=68,  # temp F
                          minor=1.002*1000,  # raw SG,
                          txpower=0,
                          rssi=-80),
         # Invalid: out of bounds SG
-        parser.TiltEvent(mac=RED_MAC,
+        parser.TiltEvent(mac=red_mac,
                          uuid=red_uuid,
                          major=68,  # temp F
                          minor=1.002*1000000,  # raw SG,
                          txpower=0,
                          rssi=-80),
         # Invalid: invalid UUID
-        parser.TiltEvent(mac=RED_MAC,
+        parser.TiltEvent(mac=red_mac,
                          uuid='',
                          major=68,  # temp F
                          minor=1.002*1000000,  # raw SG,
                          txpower=0,
                          rssi=-80),
         # Valid purple - no calibration data
-        parser.TiltEvent(mac=PURPLE_MAC,
+        parser.TiltEvent(mac=purple_mac,
                          uuid=purple_uuid,
                          major=68,  # temp F
                          minor=1.002*1000,  # raw SG,
@@ -143,7 +74,7 @@ def test_data_parser(app, m_files):
 
     # Red
     msg = messages[0]
-    assert msg.mac == RED_MAC
+    assert msg.mac == red_mac
     assert msg.color == 'Red'
     assert msg.name == 'Ferment 1 red'
     assert msg.data == {
@@ -159,7 +90,7 @@ def test_data_parser(app, m_files):
 
     # Black
     msg = messages[1]
-    assert msg.mac == BLACK_MAC
+    assert msg.mac == black_mac
     assert msg.color == 'Black'
     assert msg.name == 'Black'
     print(msg.data)
@@ -178,9 +109,9 @@ def test_data_parser(app, m_files):
 
     # Purple
     msg = messages[2]
-    assert msg.mac == PURPLE_MAC
+    assert msg.mac == purple_mac
     assert msg.color == 'Purple'
-    assert msg.name == 'Purple'
+    assert msg.name == 'Ferment 1 Tilt'
     assert msg.data == {
         'temperature[degF]': pytest.approx(68),
         'temperature[degC]': pytest.approx((68-32)*5/9, 0.01),

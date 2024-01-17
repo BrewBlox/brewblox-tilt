@@ -20,3 +20,5 @@ TILT_UUID_COLORS = {
     'a495bb70-c5b1-4b44-b512-1370f02d74de': 'Yellow',
     'a495bb80-c5b1-4b44-b512-1370f02d74de': 'Pink'
 }
+
+APPLE_VID = 0x004C

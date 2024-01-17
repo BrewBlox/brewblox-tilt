@@ -1,20 +1,31 @@
-version: '3.7'
+version: "3.7"
 services:
   eventbus:
-    image: brewblox/mosquitto:develop
+    image: ghcr.io/brewblox/mosquitto:develop
     ports:
       - "1883:1883"
   tilt:
     # Manually build the "local" image before use
-    image: brewblox/brewblox-tilt:local
+    image: ghcr.io/brewblox/brewblox-tilt:local
     privileged: true
-    network_mode: host
-    command: --mqtt-protocol=mqtt --debug --simulate orange red
+    environment:
+      - UVICORN_RELOAD=True
+      - BREWBLOX_TILT_DEBUG=True
+      # - BREWBLOX_TILT_SIMULATE=["Mauve","Lila"]
     restart: unless-stopped
     volumes:
       - type: bind
-        source: ./
-        target: /app
+        source: ./brewblox_tilt
+        target: /app/brewblox_tilt
+      - type: bind
+        source: ./entrypoint.sh
+        target: /app/entrypoint.sh
+      - type: bind
+        source: ./parse_appenv.py
+        target: /app/parse_appenv.py
       - type: bind
         source: ./share
         target: /share
+      - type: bind
+        source: /var/run/dbus
+        target: /var/run/dbus
